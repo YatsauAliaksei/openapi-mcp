@@ -1,0 +1,2400 @@
+openapi: 3.1.0
+info:
+  title: API Overview
+  description: "Sinch SMS API is one of the easiest APIs we offer and enables you\
+    \ to add fast and reliable global SMS to your applications. Send single messages,\
+    \ scheduled batch messages, use available message templates and more."
+  termsOfService: https://www.sinch.com/terms-of-service/
+  contact:
+    name: Support at Sinch
+    url: https://www.sinch.com/
+    email: support@sinch.com
+  license:
+    name: MIT
+    url: https://www.sinch.com/toc
+  version: v1
+servers:
+- url: "https://{region}.sms.api.sinch.com"
+  description: Global API
+  variables:
+    region:
+      default: us
+      enum:
+      - us
+      - eu
+      - au
+      - br
+      - ca
+      x-enumDescriptions:
+        ca: Canada
+        eu: Europe
+        us: United States
+        br: Brazil
+        au: Australia
+tags:
+- name: Groups
+  description: "A group is a set of phone numbers (or [MSISDNs](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628))\
+    \ that can be used as a target in the [`SendSMS`](/docs/sms/api-reference/sms/tag/Batches/#tag/Batches/operation/SendSMS/)\
+    \ operation. An MSISDN can only occur once in a group and any attempts to add\
+    \ a duplicate are ignored but not rejected."
+- name: Batches
+  description: |-
+    Batches are sets of SMS messages. You can send a single message or many. Batches are queued and sent at the rate limit in First-In-First-Out order.
+
+     If you want more in-depth knowledge about SMS in general please read the [API Overview](/docs/sms/api-reference/).
+- name: Inbounds
+  description: "Inbounds, or Mobile Originated messages, are incoming messages. Inbound\
+    \ messages can be listed and retrieved like batch messages and they can also be\
+    \ delivered by callback requests like delivery reports."
+- name: Delivery reports
+  description: |-
+    The REST API uses message statuses and error codes in delivery reports, which refer to the state of the SMS batch and can be present in either [Retrieve a delivery report](/docs/sms/api-reference/sms/tag/Delivery-reports/#tag/Delivery-reports/operation/GetDeliveryReportByBatchId) or sent to a [callback](/docs/sms/api-reference/sms/tag/Delivery-reports/#tag/Delivery-reports/paths/deliveryReport/post).
+
+    ### Delivery Report Statuses
+
+    The status field describes which state a particular message is in. Note that statuses of type Intermediate will only be reported if you request a status of per recipient ([Retrieve a recipient delivery report](/docs/sms/api-reference/sms/tag/Delivery-reports/#tag/Delivery-reports/operation/GetDeliveryReportByPhoneNumber)) or use callbacks with per_receipient status.
+
+    The following statuses are available when using the REST API:
+    | Status     | Type         | Description                                                                                                                                     |
+    | ---------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Queued     | Intermediate | Message is queued within REST API system and will be dispatched according to the rate of the account.                                           |
+    | Dispatched | Intermediate | Message has been dispatched and accepted for delivery by the SMSC.                                                                              |
+    | Aborted    | Final        | Message was aborted before reaching the SMSC.                                                                                                   |
+    | Cancelled  | Final        | Message was cancelled before reaching the SMSC.                                                                                                 |
+    | Rejected   | Final        | Message was rejected by the SMSC.                                                                                                               |
+    | Deleted    | Final        | Message has been deleted. Message was deleted by a remote SMSC. This may happen if the destination is an invalid MSISDN or opted out subscriber.|
+    | Delivered  | Final        | Message has been delivered.                                                                                                                     |
+    | Failed     | Final        | Message failed to be delivered.                                                                                                                 |
+    | Expired    | Final        | Message expired after delivery to the SMSC.                                                                                                     |
+    | Unknown    | Final        | Message was delivered to the SMSC but no Delivery Receipt has been received or a Delivery Receipt that couldn't be interpreted was received.    |
+
+    ### Delivery Report Error Codes
+
+    The delivery report status code provides a more detailed view of what happened with a message. The REST API shares most of its error codes with other SMS services.
+
+    In addition to these standard error codes, the REST API provides an additional set of error codes, all within the 4xx range (vendor specific errors in the range of 0x400 to 0x4FF as referenced in the SMPP specification). These are listed below:
+
+    | Status Code (Hex) | Name                         | Status     | Description                                                                                                             |
+    | ----------------- | ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+    | 400               | Queued                       | Queued     | Message is queued within REST API system and will be dispatched according to the rate of the account.                   |
+    | 401               | Dispatched                   | Dispatched | Message has been dispatched to SMSC.                                                                                    |
+    | 402               | Message unroutable           | Aborted    | SMSC rejected message. Retrying is likely to cause the same error.                                                      |
+    | 403               | Internal error               | Aborted    | An unexpected error caused the message to fail.                                                                         |
+    | 404               | Temporary delivery failure   | Aborted    | Message failed because of temporary delivery failure. Message can be retried.                                           |
+    | 405               | Unmatched Parameter          | Aborted    | One or more parameters in the message body has no mapping for this recipient. See [Parameterization](#parameterization) |
+    | 406               | Internal Expiry              | Aborted    | Message was expired before reaching SMSC. This may happen if the expiry time for the message was very short.            |
+    | 407               | Cancelled                    | Cancelled  | Message was cancelled by user before reaching SMSC.                                                                     |
+    | 408               | Internal Reject              | Aborted    | SMSC rejected the message. Retrying is likely to cause the same error.                                                  |
+    | 410               | Unmatched default originator | Aborted    | No default originator exists/configured for this recipient when sending message without originator.                     |
+    | 411               | Exceeded parts limit         | Aborted    | Message failed as the number of message parts exceeds the defined max number of message parts.                          |
+    | 412               | Unprovisioned region         | Aborted    | SMSC rejected the message. The account hasn't been provisioned for this region.                                         |
+    | 413               | Blocked                      | Aborted    | The account is blocked. Reach out to support for help. Potentially out of credits.                                      |
+    | 414               | Bad Media                    | Aborted    | MMS only, the request failed due to a bad media url, it could be that the url was unreachable or sent a bad response.   |
+    | 415               | Delivery report Rejected     | Failed     | MMS only, message reached MMSC but was rejected by MMS gateway or mobile network.                                       |
+    | 416               | Delivery report Not Supported| Failed     | MMS only, message reached MMSC but it is not supported.                                                                 |
+    | 417               | Delivery report Unreachable  | Failed     | MMS only, message reached MMSC but the destination network or the mobile subscriber cannot be reached.                  |
+    | 418               | Delivery report Unrecognized | Failed     | MMS only, message reached MMSC but the handset of the mobile subscriber does not recognize the message content.         |
+paths:
+  /xms/v1/{service_plan_id}/groups/{group_id}:
+    get:
+      tags:
+      - Groups
+      summary: Retrieve a group
+      description: This operation retrieves a specific group with the provided group
+        ID.
+      operationId: RetrieveGroup
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/groupId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiGroup"
+        "404":
+          description: Not found. The group ID is unknown to the system.
+      security:
+      - BearerAuth: []
+    put:
+      tags:
+      - Groups
+      summary: Replace a group
+      description: |-
+        The replace operation will replace all parameters, including members, of an existing group with new values.
+
+        Replacing a group targeted by a batch message scheduled in the future is allowed and changes will be reflected when the batch is sent.
+      operationId: ReplaceGroup
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/groupId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiGroupRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiGroup"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: unknown_group
+                text: Group '01FC66621VHDBN119Z8PMV1QPU' is unknown or deleted
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'members[0]' is invalid; value '+1'\
+                  \ is not a valid MSISDN."
+      security:
+      - BearerAuth: []
+    post:
+      tags:
+      - Groups
+      summary: Update a group
+      description: |-
+        With the update group operation, you can add and remove members in an existing group as well as rename the group.
+
+        This method encompasses a few ways to update a group:
+
+        1. By using `add` and `remove` arrays containing phone numbers, you control the group movements. Any list of valid numbers in E.164 format can be added.
+        2. By using the `auto_update` object, your customer can add or remove themselves from groups.
+        3. You can also add or remove other groups into this group with `add_from_group` and `remove_from_group`.
+
+        #### Other group update info
+
+        - The request will not be rejected for duplicate adds or unknown removes.
+        - The additions will be done before the deletions. If an phone number is on both lists, it will not be apart of the resulting group.
+        - Updating a group targeted by a batch message scheduled in the future is allowed. Changes will be reflected when the batch is sent.
+      operationId: UpdateGroup
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/groupId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiGroupUpdate"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiGroup"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: unknown_group
+                text: Group '01FC66621VHDBN119Z8PMV1QPU' is unknown or deleted
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'add[0]' is invalid; value '+1' is\
+                  \ not a valid MSISDN."
+      security:
+      - BearerAuth: []
+    delete:
+      tags:
+      - Groups
+      summary: Delete a group
+      description: This operation deletes the group with the provided group ID.
+      operationId: deleteGroup
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/groupId"
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not found. The group ID is unknown to the system.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches/{batch_id}:
+    get:
+      tags:
+      - Batches
+      summary: Get a batch message
+      description: This operation returns a specific batch that matches the provided
+        batch ID.
+      operationId: GetBatchMessage
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                oneOf:
+                - $ref: "#/components/schemas/Text"
+                - $ref: "#/components/schemas/Binary"
+                - $ref: "#/components/schemas/Media"
+              example:
+                id: 01FC66621VHDBN119Z8PMV1QPQ
+                from: "12345"
+                to:
+                - "15551231212"
+                body: Hello how are you
+                created_at: 2020-02-25T23:01:01.001Z
+                type: mt_text
+                modified_at: 2020-02-25T23:01:01.001Z
+                expire_at: 2020-02-28T23:01:01.001Z
+                delivery_report: none
+                canceled: false
+                flash_message: false
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+    put:
+      tags:
+      - Batches
+      summary: Replace a batch
+      description: This operation will replace all the parameters of a batch with
+        the provided values. Effectively the same as cancelling a batch and sending
+        a new one instead.
+      operationId: ReplaceBatch
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/Binary"
+              - $ref: "#/components/schemas/Media"
+              - $ref: "#/components/schemas/Text"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/Binary"
+                - $ref: "#/components/schemas/Media"
+                - $ref: "#/components/schemas/Text"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'to[0]' is invalid; value '+1' is not\
+                  \ a valid MSISDN or group ID."
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+    post:
+      tags:
+      - Batches
+      summary: Update a Batch message
+      description: This operation updates all specified parameters of a batch that
+        matches the provided batch ID.
+      operationId: UpdateBatchMessage
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/update_binary_message"
+              - $ref: "#/components/schemas/update_media_message"
+              - $ref: "#/components/schemas/update_text_message"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/Binary"
+                - $ref: "#/components/schemas/Media"
+                - $ref: "#/components/schemas/Text"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'to_add[0]' is invalid; value 'abc'\
+                  \ is not a valid MSISDN or group ID."
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: missing_callback_url
+                text: Requesting delivery report without any callback URL.
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+    delete:
+      tags:
+      - Batches
+      summary: Cancel a batch message
+      description: |-
+        A batch can be canceled at any point. If a batch is canceled while it's currently being delivered some messages currently being processed might still be delivered. The delivery report will indicate which messages were canceled and which weren't.
+
+        Canceling a batch scheduled in the future will result in an empty delivery report while canceling an already sent batch would result in no change to the completed delivery report.
+      operationId: CancelBatchMessage
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                oneOf:
+                - $ref: "#/components/schemas/Text"
+                - $ref: "#/components/schemas/Binary"
+                - $ref: "#/components/schemas/Media"
+              example:
+                id: 01FC66621VHDBN119Z8PMV1QPQ
+                from: "12345"
+                to:
+                - "15551231212"
+                body: Hello how are you
+                created_at: 2020-02-25T23:01:01.001Z
+                type: mt_text
+                modified_at: 2020-02-25T23:01:01.001Z
+                expire_at: 2020-02-28T23:01:01.001Z
+                delivery_report: none
+                canceled: true
+                flash_message: false
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+        "409":
+          description: Conflict. There was an active operation operating on the batch.
+            The cancellation can be retried.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/groups:
+    get:
+      tags:
+      - Groups
+      summary: List groups
+      description: |-
+        With the list operation you can list all groups that you have created. This operation supports pagination.
+
+        Groups are returned in reverse chronological order.
+      operationId: ListGroups
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/page"
+      - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiGroupList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: Parameter 'page_size' is not a valid integer; value 'zero'.
+      security:
+      - BearerAuth: []
+    post:
+      tags:
+      - Groups
+      summary: Create a group
+      description: |-
+        This endpoint allows you to create a group of recipients.  A new group must be created with a group name. This is represented by the `name` field which can be up to 20 charecters. In addition, there are a number of optional fields:
+          - `members` field enables groups to be created with an initial list of contacts
+          - `auto_update` allows customers to auto subscribe to a new group. This contains three fields. The `to` field contains the group creator's number. (This number **must be provisioned by contacting your account manager**.) The `add` and `remove` fields are objects containing the keywords that customers need to text to join or leave a group.
+      operationId: CreateGroup
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiGroupRequest"
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiGroup"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: unknown_group
+                text: Group '01FC66621VHDBN119Z8PMV1QPU' is unknown or deleted
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'members[0]' is invalid; value '+1'\
+                  \ is not a valid MSISDN."
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches:
+    get:
+      tags:
+      - Batches
+      summary: List batches
+      description: With the list operation you can list batch messages created in
+        the last 14 days that you have created. This operation supports pagination.
+      operationId: ListBatches
+      parameters:
+      - name: start_date
+        in: query
+        description: "Only list messages received at or after this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`.\
+          \ \n \nDefault:\nNow-24"
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: end_date
+        in: query
+        description: "Only list messages received before this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`."
+        required: false
+        schema:
+          type: string
+          format: date-time
+        example: 2020-10-02T09:34:18.542Z
+      - name: from
+        in: query
+        description: Only list messages sent from this sender number. Multiple originating
+          numbers can be comma separated. Must be phone numbers or short code.
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+        example:
+        - "44345"
+        - "45607"
+      - name: client_reference
+        in: query
+        description: Client reference to include
+        required: false
+        schema:
+          type: string
+          maxLength: 2048
+          minLength: 0
+        example: myReference
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/page"
+      - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiBatchList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: Parameter 'page_size' is not a valid integer; value 'zero'.
+      security:
+      - BearerAuth: []
+    post:
+      tags:
+      - Batches
+      summary: Send
+      description: |-
+        Send a message or a batch of messages.
+
+        Depending on the length of the body, one message might be split into multiple parts and charged accordingly.
+
+        Any groups targeted in a scheduled batch will be evaluated at the time of sending. If a group is deleted between batch creation and scheduled date, it will be considered empty.
+
+        Be sure to use the correct [region](/docs/sms/api-reference/#base-url) in the server URL.
+      operationId: SendSMS
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Default schema is Text if type is not specified
+              oneOf:
+              - $ref: "#/components/schemas/Text"
+              - $ref: "#/components/schemas/Binary"
+              - $ref: "#/components/schemas/Media"
+            example:
+              from: "12345"
+              to:
+              - "+15551231212"
+              body: Hello how are you
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/Binary"
+                - $ref: "#/components/schemas/Media"
+                - $ref: "#/components/schemas/Text"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'to[0]' is invalid; value '+1' is not\
+                  \ a valid MSISDN or group ID."
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: missing_callback_url
+                text: Requesting delivery report without any callback URL.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches/{batch_id}/delivery_feedback:
+    post:
+      tags:
+      - Batches
+      summary: Send delivery feedback for a message
+      description: |-
+        Send feedback if your system can confirm successful message delivery.
+
+        Feedback can only be provided if `feedback_enabled` was set when batch was submitted.
+
+        **Batches**: It is possible to submit feedback multiple times for the same batch for different recipients. Feedback without specified recipients is treated as successful message delivery to all recipients referenced in the batch. Note that the `recipients` key is still required even if the value is empty.
+
+        **Groups**: If the batch message was creating using a group ID, at least one recipient is required. Excluding recipients (an empty recipient list) does not work and will result in a failed request.    delivery-reports: Delivery reports can be retrieved even if no callback was requested. The difference between a summary and a full report is only that the full report contains the phone numbers in [E.164](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537) format for each status code.
+      operationId: deliveryFeedback
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiDeliveryFeedback"
+        required: true
+      responses:
+        "202":
+          description: Accepted
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_constraint_violation
+                text: At least one recipient required for delivery feedback if the
+                  batch was created with group ID.
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches/dry_run:
+    post:
+      tags:
+      - Batches
+      summary: Dry run
+      description: This operation will perform a dry run of a batch which calculates
+        the bodies and number of parts for all messages in the batch without actually
+        sending any messages.
+      operationId: Dry_Run
+      parameters:
+      - name: per_recipient
+        in: query
+        description: Whether to include per recipient details in the response
+        required: false
+        schema:
+          type: boolean
+          default: false
+      - name: number_of_recipients
+        in: query
+        description: Max number of recipients to include per recipient details for
+          in the response
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 0
+      - $ref: "#/components/parameters/servicePlanId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: "#/components/schemas/Binary"
+              - $ref: "#/components/schemas/Media"
+              - $ref: "#/components/schemas/Text"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiMtMessageDryRun"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: "The format of parameter 'to[0]' is invalid; value '+1' is not\
+                  \ a valid MSISDN or group ID."
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/inbounds:
+    get:
+      tags:
+      - Inbounds
+      summary: List incoming messages
+      description: |-
+        Using a client reference in inbound messages requires additional setup on your account. Contact your [account manager](https://dashboard.sinch.com/settings/account-details) to enable this feature.
+
+        Only list inbound messages that are in response to messages with a previously provided client reference.
+      operationId: ListInboundMessages
+      parameters:
+      - name: to
+        in: query
+        description: "Only list messages sent to this destination. Multiple phone\
+          \ numbers formatted as either [E.164](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+          \ or shortcodes can be comma separated."
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+        example:
+        - "+14155553421"
+        - "45607"
+      - name: start_date
+        in: query
+        description: "Only list messages received at or after this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`.\
+          \ \n \nDefault:\nNow-24"
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: end_date
+        in: query
+        description: "Only list messages received before this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`."
+        required: false
+        schema:
+          type: string
+          format: date-time
+        example: 2020-10-02T09:34:18.542Z
+      - name: client_reference
+        in: query
+        description: Only list inbound messages that are in response to messages with
+          the provided client reference. Having client reference in inbound messages
+          requires setup on the account so talk to your AM to enable this feature.
+        required: false
+        schema:
+          type: string
+          maxLength: 2048
+          minLength: 0
+        example: myReference
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/page"
+      - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiInboundList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: Parameter 'page_size' is not a valid integer; value 'zero'.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/inbounds/{inbound_id}:
+    get:
+      tags:
+      - Inbounds
+      summary: Retrieve inbound message
+      description: This operation retrieves a specific inbound message with the provided
+        inbound ID.
+      operationId: RetrieveInboundMessage
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/inboundId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: "#/components/schemas/binary_message"
+                - $ref: "#/components/schemas/media_message"
+                - $ref: "#/components/schemas/text_message"
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/groups/{group_id}/members:
+    get:
+      tags:
+      - Groups
+      summary: Get phone numbers for a group
+      description: This operation retrieves the members of the group with the provided
+        group ID.
+      operationId: GetMembers
+      parameters:
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/groupId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Msisdn"
+              example:
+              - "+453234457784"
+              - "+453234457485"
+        "404":
+          description: Not found. The group ID is unknown to the system.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/delivery_reports:
+    get:
+      tags:
+      - Delivery reports
+      summary: Retrieve a list of delivery reports
+      description: |-
+        Get a list of finished delivery reports.
+
+        This operation supports pagination.
+      operationId: getDeliveryReports
+      parameters:
+      - name: start_date
+        in: query
+        description: "Only list messages received at or after this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`.\
+          \ \n \nDefault:\nNow-24"
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: end_date
+        in: query
+        description: "Only list messages received before this date/time. Formatted\
+          \ as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601): `YYYY-MM-DDThh:mm:ss.SSSZ`."
+        required: false
+        schema:
+          type: string
+          format: date-time
+        example: 2020-10-02T09:34:18.542Z
+      - name: status
+        in: query
+        description: Comma separated list of Delivery Report Statuses to include.
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryStatus"
+        example:
+        - Queued
+        - Dispatched
+        - Delivered
+      - name: code
+        in: query
+        description: Comma separated list of **Delivery Receipt Error Codes** to include
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            type: integer
+        example:
+        - 400
+        - 405
+      - name: client_reference
+        in: query
+        description: Client reference to include
+        required: false
+        schema:
+          type: string
+          maxLength: 2048
+          minLength: 0
+        example: myReference
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/page"
+      - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiDeliveryReportList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: Parameter 'page_size' is not a valid integer; value 'zero'.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches/{batch_id}/delivery_report:
+    get:
+      tags:
+      - Delivery reports
+      summary: Retrieve a delivery report
+      description: "Delivery reports can be retrieved even if no callback was requested.\
+        \ The difference between a summary and a full report is only that the full\
+        \ report contains the phone numbers in [E.164](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+        \ format for each status code."
+      operationId: GetDeliveryReportByBatchId
+      parameters:
+      - name: type
+        in: query
+        description: |-
+          The type of delivery report.
+
+          - A `summary` will count the number of messages sent per status.
+          - A `full` report give that of a `summary` report but in addition, lists phone numbers.
+        required: false
+        schema:
+          type: string
+          enum:
+          - summary
+          - full
+      - name: status
+        in: query
+        description: Comma separated list of Delivery Report Statuses to include.
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryStatus"
+        example:
+        - Queued
+        - Dispatched
+        - Delivered
+      - name: code
+        in: query
+        description: Comma separated list of **Delivery Receipt Error Codes** to include
+        required: false
+        explode: false
+        schema:
+          type: array
+          items:
+            type: integer
+        example:
+        - 400
+        - 405
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiDeliveryReport"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: '''bla'' is not a valid status'
+        "404":
+          description: Not found. The batch ID is unknown to the system.
+      security:
+      - BearerAuth: []
+  /xms/v1/{service_plan_id}/batches/{batch_id}/delivery_report/{recipient_msisdn}:
+    get:
+      tags:
+      - Delivery reports
+      summary: Retrieve a recipient delivery report
+      description: A recipient delivery report contains the message status for a single
+        recipient phone number.
+      operationId: GetDeliveryReportByPhoneNumber
+      parameters:
+      - name: recipient_msisdn
+        in: path
+        description: Phone number for which you to want to search.
+        required: true
+        schema:
+          type: string
+        example: "+134848393506"
+      - $ref: "#/components/parameters/servicePlanId"
+      - $ref: "#/components/parameters/batchId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiRecipientDeliveryReport"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/errorResponseObj"
+              example:
+                code: syntax_invalid_parameter_format
+                text: '''abc'' is not a valid msisdn'
+        "404":
+          description: Not found. The batch ID or msisdn is unknown to the system.
+      security:
+      - BearerAuth: []
+components:
+  schemas:
+    errorResponseObj:
+      type: object
+      properties:
+        code:
+          type: string
+          description: "The error code. See [error codes](https://developers.sinch.com/docs/sms/api-reference/status-codes/)."
+        text:
+          type: string
+          description: The human readable description of the error.
+    parameterObj:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties:
+          type: string
+          description: |-
+            The key is the recipient's MSISDN that should have the `parameter_key` replaced with the value.
+
+            If key is `default`, then specified value is used as the fall-back value for omitted recipient phone numbers [MSISDNs](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628).
+          maxLength: 1600
+        description: "The name of the parameter that will be replaced in the message\
+          \ body. \n \n Letters A-Z and a-z, digits 0-9 and .-_ allowed."
+        maxLength: 16
+        minLength: 1
+        pattern: "^[A-Za-z0-9_\\-.]+$"
+      description: "Contains the parameters that will be used for customizing the\
+        \ message for each recipient. \n \n  [Click here to learn more about parameters](/docs/sms/api-reference/#parameterization)"
+      example:
+        name:
+          "15551231234": Joe
+          default: there
+    addKeyword:
+      description: Keyword to be sent in MO to add MSISDN to a group
+      properties:
+        first_word:
+          type: string
+          description: Opt-in keyword like "JOIN" if _auto_update.to_ is dedicated
+            long/short number or unique brand keyword like "Sinch" if it is a shared
+            short code.
+          example: Sinch
+          maxLength: 15
+          minLength: 1
+          pattern: ^\w+$
+        second_word:
+          type: string
+          description: Opt-in keyword like "JOIN" if _auto_update.to_ is shared short
+            code.
+          example: JOIN
+          maxLength: 15
+          minLength: 1
+          pattern: ^\w+$
+      required:
+      - first_word
+    removeKeyword:
+      description: Keyword to be sent in MO to remove MSISDN to a group
+      example: "{\"first_word\": \"LEAVE\"}"
+      properties:
+        first_word:
+          type: string
+          description: Opt-out keyword like "LEAVE" if _auto_update.to_ is dedicated
+            long/short number or unique brand keyword like "Sinch" if it is a shared
+            short code.
+          example: LEAVE
+          maxLength: 15
+          minLength: 1
+          pattern: ^\w+$
+        second_word:
+          type: string
+          description: Opt-out keyword like "LEAVE" if _auto_update.to_ is shared
+            short code.
+          maxLength: 15
+          minLength: 1
+          pattern: ^\w+$
+      required:
+      - first_word
+    addFromGroupId:
+      type: string
+      description: "Copy the members from the another group into this group. Constraints:\
+        \ Must be valid group ID"
+      example: 01FC66621VHDBN119Z8PMV1QPU
+    removeFromGroupId:
+      type: string
+      description: "Remove the members in a specified group from this group. Constraints:\
+        \ Must be valid group ID."
+      example: 01FC66621VHDBN119Z8PMV1AHY
+    DeliveryStatus:
+      type: string
+      description: The simplified status as described in _Delivery Report Statuses_.
+      enum:
+      - Queued
+      - Dispatched
+      - Aborted
+      - Cancelled
+      - Failed
+      - Delivered
+      - Expired
+      - Rejected
+      - Deleted
+      - Unknown
+      example: Delivered
+      x-enumDescriptions:
+        Queued: Intermediate type. Message is queued within REST API system and will
+          be dispatched according to the rate of the account.
+        Aborted: Final type. Message was aborted before reaching the SMSC.
+        Rejected: Final type. Message was rejected by the SMSC.
+        Unknown: Final type. Message was delivered to the SMSC but no Delivery Receipt
+          has been received or a Delivery Receipt that couldn't be interpreted was
+          received.
+        Dispatched: Intermediate type. Message has been dispatched and accepted for
+          delivery by the SMSC.
+        Cancelled: Final type. Message was cancelled by user before reaching SMSC.
+        Failed: Final type. Message failed to be delivered.
+        Expired: Final type. Message expired before delivery to the SMSC. This may
+          happen if the expiry time for the message was very short.
+        Deleted: Final type. Message was deleted by the SMSC.
+        Delivered: Final type. Message has been delivered.
+    DeliveryReportType:
+      type: string
+      description: "Request delivery report callback. \n \n Note that delivery reports\
+        \ can be fetched from the API regardless of this setting."
+      enum:
+      - none
+      - summary
+      - full
+      - per_recipient
+      - per_recipient_final
+      x-enumDescriptions:
+        per_recipient: A delivery report callback will be sent for each status change
+          of a message. This could result in a lot of callbacks and should be **used
+          with caution for larger batches**. These delivery reports also include a
+          timestamp of when the Delivery Report originated from the SMSC.
+        none: No delivery report callback will be sent.
+        summary: A single delivery report callback will be sent.
+        per_recipient_final: "A delivery report callback representing the final status\
+          \ of a message will be sent for each recipient. This will send only one\
+          \ callback per recipient, compared to the multiple callbacks sent when using\
+          \ `per_recipient`. The delivery report will also include a timestamp of\
+          \ when it originated from the SMSC."
+        full: A single delivery report callback will be sent which includes a list
+          of recipients per delivery status.
+    Msisdn:
+      type: string
+      format: E.164
+      description: "A phone number in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)."
+      example: "15551231234"
+    ApiGroupAutoUpdate:
+      type: object
+      properties:
+        to:
+          type: string
+          description: "Short code or long number addressed in MO.\n \n Constraints:\
+            \ Must be valid MSISDN in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ or short code."
+          example: "+15551231234"
+        add:
+          $ref: "#/components/schemas/addKeyword"
+        remove:
+          $ref: "#/components/schemas/removeKeyword"
+      required:
+      - to
+    ApiGroupRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the group
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        name:
+          type: string
+          description: Name of group if set.
+          example: My new customers
+          maxLength: 20
+          minLength: 1
+        size:
+          type: integer
+          format: int32
+          description: The number of members currently in the group.
+          example: 2
+          readOnly: true
+        members:
+          type: array
+          description: "Initial list of phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ [MSISDNs](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)\
+            \ for the group."
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            $ref: "#/components/schemas/Msisdn"
+          maxItems: 10000
+          minItems: 0
+          uniqueItems: true
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when the group was created. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when the group was last updated. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        child_groups:
+          type: array
+          description: "MSISDNs of child group will be included in this group. If\
+            \ present then this group will be auto populated.\n \n Constraints: Elements\
+            \ must be group IDs."
+          example:
+          - 01FC66621VHDBN119Z8PMV1AHY
+          items:
+            type: string
+          maxItems: 10
+          minItems: 0
+          uniqueItems: true
+        auto_update:
+          $ref: "#/components/schemas/ApiGroupAutoUpdate"
+    ApiGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the group
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        name:
+          type: string
+          description: Name of group if set.
+          example: My new customers
+          maxLength: 20
+          minLength: 1
+        size:
+          type: integer
+          format: int32
+          description: The number of members currently in the group.
+          example: 2
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when the group was created. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when the group was last updated. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        child_groups:
+          type: array
+          description: "MSISDNs of child group will be included in this group. If\
+            \ present then this group will be auto populated.\n \n Constraints: Elements\
+            \ must be group IDs."
+          example:
+          - 01FC66621VHDBN119Z8PMV1AHY
+          items:
+            type: string
+          maxItems: 10
+          minItems: 0
+          uniqueItems: true
+        auto_update:
+          $ref: "#/components/schemas/ApiGroupAutoUpdate"
+    Binary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for batch
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        to:
+          type: array
+          description: "List of phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ and group IDs that will receive the batch. [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            type: string
+          maxItems: 1000
+          minItems: 1
+        from:
+          type: string
+          description: "Sender number.\n \n Required if Automatic Default Originator\
+            \ not configured."
+          example: "+15551231234"
+        canceled:
+          type: boolean
+          default: false
+          description: Indicates if the batch has been canceled or not.
+          readOnly: true
+        body:
+          type: string
+          description: "The message content Base64 encoded. \n \n Max 140 bytes together\
+            \ with udh."
+        udh:
+          type: string
+          description: The UDH header of a binary message HEX encoded. Max 140 bytes
+            together with body.
+        type:
+          type: string
+          description: SMS in binary format
+          enum:
+          - mt_binary
+          x-enumDescriptions:
+            mt_binary: SMS in binary format
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was created. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was last updated. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        delivery_report:
+          type: string
+          $ref: "#/components/schemas/DeliveryReportType"
+          default: none
+        send_at:
+          type: string
+          format: date-time
+          description: |
+            If set in the future the message will be delayed until send_at occurs.
+            Must be before expire_at.
+            Must be within two years from now.
+            If set in the past messages will be sent immediately.
+            YYYY-MM-DDThh:mm:ss.SSSZ format
+          example: 2024-08-07T12:34:56.789Z
+        expire_at:
+          type: string
+          format: date-time
+          description: "If set the system will stop trying to deliver the message\
+            \ at this point. \n \n Must be after send_at. Default and max is 3 days\
+            \ after send_at. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        callback_url:
+          type: string
+          description: "Override the default callback URL for this batch. \n \n Must\
+            \ be valid URL."
+          maxLength: 2048
+          minLength: 0
+        client_reference:
+          type: string
+          description: "A client provided identifier of batch message. If set, it\
+            \ will be added in the delivery report/callback of this batch."
+          maxLength: 2048
+          minLength: 0
+        feedback_enabled:
+          type: boolean
+          default: false
+          description: "If set to true then [feedback](/docs/sms/api-reference/sms/tag/Batches/#tag/Batches/operation/deliveryFeedback)\
+            \ is expected after successful delivery."
+        from_ton:
+          type: integer
+          format: int32
+          description: The type of number for the sender number. Use to override the
+            automatic detection.
+          maximum: 6
+          minimum: 0
+        from_npi:
+          type: integer
+          format: int32
+          description: Number Plan Indicator for the sender number. Use to override
+            the automatic detection.
+          maximum: 18
+          minimum: 0
+      required:
+      - body
+      - to
+      - type
+      - udh
+      title: Binary
+    Media:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for batch
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        to:
+          type: array
+          description: "List of phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ and group IDs that will receive the batch. [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            type: string
+          maxItems: 1000
+          minItems: 1
+        from:
+          type: string
+          description: "Sender number.\n \n Required if Automatic Default Originator\
+            \ not configured."
+          example: "+15551231234"
+        canceled:
+          type: boolean
+          default: false
+          description: Indicates if the batch has been canceled or not.
+          readOnly: true
+        body:
+          $ref: "#/components/schemas/MediaBody"
+        parameters:
+          $ref: "#/components/schemas/parameterObj"
+        type:
+          type: string
+          description: Media message
+          enum:
+          - mt_media
+          x-enumDescriptions:
+            mt_media: Media message
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was created. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was last updated. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        delivery_report:
+          type: string
+          $ref: "#/components/schemas/DeliveryReportType"
+          default: none
+        send_at:
+          type: string
+          format: date-time
+          description: |
+            If set in the future the message will be delayed until send_at occurs.
+            Must be before expire_at.
+            Must be within two years from now.
+            If set in the past messages will be sent immediately.
+            YYYY-MM-DDThh:mm:ss.SSSZ format
+          example: 2024-08-07T12:34:56.789Z
+        expire_at:
+          type: string
+          format: date-time
+          description: "If set the system will stop trying to deliver the message\
+            \ at this point. \n \n Must be after send_at. Default and max is 3 days\
+            \ after send_at. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        callback_url:
+          type: string
+          description: "Override the default callback URL for this batch. \n \n Must\
+            \ be valid URL."
+          maxLength: 2048
+          minLength: 0
+        client_reference:
+          type: string
+          description: "A client provided identifier of batch message. If set, it\
+            \ will be added in the delivery report/callback of this batch."
+          maxLength: 2048
+          minLength: 0
+        feedback_enabled:
+          type: boolean
+          default: false
+          description: "If set to true then [feedback](/docs/sms/api-reference/sms/tag/Batches/#tag/Batches/operation/deliveryFeedback)\
+            \ is expected after successful delivery."
+        strict_validation:
+          type: boolean
+          description: "Whether or not you want the media included in your message\
+            \ to be checked against Sinch MMS channel best practices. If set to true,\
+            \ your message will be rejected if it doesn't conform to the listed recommendations,\
+            \ otherwise no validation will be performed."
+      required:
+      - body
+      - to
+      - type
+      title: Media
+    MediaBody:
+      type: object
+      properties:
+        subject:
+          type: string
+          description: The subject text
+          example: Media message from Sinch!
+          maxLength: 80
+          minLength: 0
+        message:
+          type: string
+          description: The message text
+          example: Your text message
+          maxLength: 2000
+          minLength: 0
+        url:
+          type: string
+          description: URL to the media file
+          example: https://en.wikipedia.org/wiki/Sinch_(company)#/media/File:Sinch_LockUp_RGB.png
+          maxLength: 2048
+          minLength: 0
+      required:
+      - url
+    Text:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for batch
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        to:
+          type: array
+          description: "List of phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ and group IDs that will receive the batch. [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            type: string
+          maxItems: 1000
+          minItems: 1
+        from:
+          type: string
+          description: "Sender number.\n \n Required if Automatic Default Originator\
+            \ not configured."
+          example: "+15551231234"
+        canceled:
+          type: boolean
+          default: false
+          description: Indicates if the batch has been canceled or not.
+          readOnly: true
+        parameters:
+          $ref: "#/components/schemas/parameterObj"
+        body:
+          type: string
+          description: The message content
+          example: "Hi ${name}! How are you?"
+          maxLength: 2000
+          minLength: 0
+        type:
+          type: string
+          description: Regular SMS
+          enum:
+          - mt_text
+          x-enumDescriptions:
+            mt_text: Regular SMS
+        created_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was created. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          description: "Timestamp for when batch was last updated. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+          readOnly: true
+        delivery_report:
+          type: string
+          $ref: "#/components/schemas/DeliveryReportType"
+          default: none
+        send_at:
+          type: string
+          format: date-time
+          description: |
+            If set in the future the message will be delayed until send_at occurs.
+            Must be before expire_at.
+            Must be within two years from now.
+            If set in the past messages will be sent immediately.
+            YYYY-MM-DDThh:mm:ss.SSSZ format
+          example: 2024-08-07T12:34:56.789Z
+        expire_at:
+          type: string
+          format: date-time
+          description: "If set the system will stop trying to deliver the message\
+            \ at this point. \n \n Must be after send_at. Default and max is 3 days\
+            \ after send_at. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        callback_url:
+          type: string
+          description: "Override the default callback URL for this batch. \n \n Must\
+            \ be valid URL."
+          maxLength: 2048
+          minLength: 0
+        client_reference:
+          type: string
+          description: "A client provided identifier of batch message. If set, it\
+            \ will be added in the delivery report/callback of this batch."
+          maxLength: 2048
+          minLength: 0
+        feedback_enabled:
+          type: boolean
+          default: false
+          description: "If set to true then [feedback](/docs/sms/api-reference/sms/tag/Batches/#tag/Batches/operation/deliveryFeedback)\
+            \ is expected after successful delivery."
+        flash_message:
+          type: boolean
+          default: false
+          description: Shows message on screen without user interaction while not
+            saving the message to the inbox.
+        max_number_of_message_parts:
+          type: integer
+          format: int32
+          description: Message will be dispatched only if it is not split to more
+            parts than Max Number of Message Parts
+          minimum: 1
+        truncate_concat:
+          type: boolean
+          description: If set to true the message will be shortened when exceeding
+            one part.
+        from_ton:
+          type: integer
+          format: int32
+          description: The type of number for the sender number. Use to override the
+            automatic detection.
+          maximum: 6
+          minimum: 0
+        from_npi:
+          type: integer
+          format: int32
+          description: Number Plan Indicator for the sender number. Use to override
+            the automatic detection.
+          maximum: 18
+          minimum: 0
+      required:
+      - body
+      - to
+      title: Text
+    ApiGroupUpdate:
+      type: object
+      properties:
+        add:
+          type: array
+          description: "Add a list of phone numbers (MSISDNs) to this group. The phone\
+            \ numbers are a strings within an array and must be in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)."
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            $ref: "#/components/schemas/Msisdn"
+          maxItems: 10000
+          minItems: 0
+        remove:
+          type: array
+          description: "Remove a list of phone numbers (MSISDNs) to this group.The\
+            \ phone numbers are a strings within an array and must be in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)."
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            $ref: "#/components/schemas/Msisdn"
+          maxItems: 10000
+          minItems: 0
+        name:
+          type: string
+          description: "The name of the group. Omitting `name` from the JSON body\
+            \ will leave the name unchanged. To remove an existing name set, name\
+            \ explicitly to the JSON value `null`."
+          example: My new customers
+          maxLength: 20
+          minLength: 1
+        add_from_group:
+          $ref: "#/components/schemas/addFromGroupId"
+          description: "Copy the members from the another group into this group. Constraints:\
+            \ Must be valid group ID."
+        remove_from_group:
+          $ref: "#/components/schemas/removeFromGroupId"
+        auto_update:
+          $ref: "#/components/schemas/ApiGroupAutoUpdate"
+    ApiUpdateMtMessage:
+      type: object
+      discriminator:
+        propertyName: type
+      properties:
+        from:
+          type: string
+          description: Sender number.
+          example: "+15551231234"
+        type:
+          type: string
+          readOnly: true
+        to_add:
+          type: array
+          description: "List of Phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ and group IDs that will be added to the list that will receive the batch.\
+            \ [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          items:
+            type: string
+          maxItems: 1000
+          minItems: 1
+        to_remove:
+          type: array
+          description: "List of Phone numbers in [E.164 format](https://community.sinch.com/t5/Glossary/E-164/ta-p/7537)\
+            \ and group IDs that will be removed from the list that will receive the\
+            \ batch. [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          items:
+            type: string
+          maxItems: 1000
+          minItems: 1
+        delivery_report:
+          type: string
+          $ref: "#/components/schemas/DeliveryReportType"
+        send_at:
+          type: string
+          format: date-time
+          description: "If set in the future the message will be delayed until send_at\
+            \ occurs. \n \n Must be before expire_at. \n \n If set in the past messages\
+            \ will be sent immediately. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        expire_at:
+          type: string
+          format: date-time
+          description: "If set the system will stop trying to deliver the message\
+            \ at this point. \n \n Must be after send_at. Default and max is 3 days\
+            \ after send_at. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        callback_url:
+          type: string
+          description: "Override the default callback URL for this batch. \n \n Must\
+            \ be valid URL."
+          maxLength: 2048
+          minLength: 0
+        client_reference:
+          type: string
+          maxLength: 2048
+          minLength: 0
+        feedback_enabled:
+          type: boolean
+    update_binary_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiUpdateMtMessage"
+      - type: object
+        properties:
+          body:
+            type: string
+            description: "The message content Base64 encoded. \n \n Max 140 bytes\
+              \ together with udh."
+          udh:
+            type: string
+            description: The UDH header of a binary message HEX encoded. Max 140 bytes
+              together with body.
+          type:
+            type: string
+            description: SMS in binary format
+            enum:
+            - mt_binary
+            x-enumDescriptions:
+              mt_binary: SMS in binary format
+          from_ton:
+            type: integer
+            format: int32
+            description: The type of number for the sender number. Use to override
+              the automatic detection.
+            maximum: 6
+            minimum: 0
+          from_npi:
+            type: integer
+            format: int32
+            description: Number Plan Indicator for the sender number. Use to override
+              the automatic detection.
+            maximum: 18
+            minimum: 0
+      required:
+      - udh
+      title: Update binary message
+    update_media_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiUpdateMtMessage"
+      - type: object
+        properties:
+          body:
+            $ref: "#/components/schemas/MediaBody"
+          parameters:
+            $ref: "#/components/schemas/parameterObj"
+          type:
+            type: string
+            description: MMS
+            enum:
+            - mt_media
+            x-enumDescriptions:
+              mt_media: MMS.
+          strict_validation:
+            type: boolean
+      title: Update media message
+    update_text_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiUpdateMtMessage"
+      - type: object
+        properties:
+          parameters:
+            $ref: "#/components/schemas/parameterObj"
+          body:
+            type: string
+            description: The message content
+            example: "Hi ${name}! How are you?"
+            maxLength: 2000
+            minLength: 0
+          type:
+            type: string
+            description: Regular SMS
+            enum:
+            - mt_text
+            x-enumDescriptions:
+              mt_text: Regular SMS
+          from_ton:
+            type: integer
+            format: int32
+            description: The type of number for the sender number. Use to override
+              the automatic detection.
+            maximum: 6
+            minimum: 0
+          from_npi:
+            type: integer
+            format: int32
+            description: Number Plan Indicator for the sender number. Use to override
+              the automatic detection.
+            maximum: 18
+            minimum: 0
+          max_number_of_message_parts:
+            type: integer
+            format: int32
+            description: Message will be dispatched only if it is not split to more
+              parts than Max Number of Message Parts
+            minimum: 1
+          truncate_concat:
+            type: boolean
+            description: If set to true the message will be shortened when exceeding
+              one part.
+          flash_message:
+            type: boolean
+            default: false
+            description: Shows message on screen without user interaction while not
+              saving the message to the inbox.
+      title: Update text message
+    ApiDeliveryFeedback:
+      type: object
+      properties:
+        recipients:
+          type: array
+          description: List of recipients confirmed to have received their message
+          example:
+          - "+15551231234"
+          - "+15551256344"
+          items:
+            type: string
+      required:
+      - recipients
+    ApiMtMessageDryRun:
+      type: object
+      properties:
+        number_of_recipients:
+          type: integer
+          format: int32
+        number_of_messages:
+          type: integer
+          format: int32
+        per_recipient:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiRecipientDryRun"
+          uniqueItems: true
+      required:
+      - number_of_messages
+      - number_of_recipients
+    ApiRecipientDryRun:
+      type: object
+      properties:
+        recipient:
+          type: string
+          description: "Sender number.\n \n Required if Automatic Default Originator\
+            \ not configured."
+          example: "+15551231234"
+        body:
+          type: string
+        number_of_parts:
+          type: integer
+          format: int32
+        encoding:
+          type: string
+          enum:
+          - text
+          - unicode
+          x-enumDescriptions:
+            text: GSM text encoding
+            unicode: Unicode text encoding
+      required:
+      - body
+      - encoding
+      - number_of_parts
+      - recipient
+    ApiInboundList:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: The total number of entries matching the given filters.
+          example: 2
+        page:
+          type: integer
+          format: int32
+          description: The requested page.
+          example: 0
+        inbounds:
+          type: array
+          description: The page of inbounds matching the given filters.
+          items:
+            oneOf:
+            - $ref: "#/components/schemas/binary_message"
+            - $ref: "#/components/schemas/media_message"
+            - $ref: "#/components/schemas/text_message"
+        page_size:
+          type: integer
+          format: int32
+          description: The number of entries returned in this request.
+          example: 2
+    ApiMoMessage:
+      type: object
+      discriminator:
+        propertyName: type
+      properties:
+        body:
+          type: object
+        client_reference:
+          type: string
+          description: If this inbound message is in response to a previously sent
+            message containing a client reference then this field contains that client
+            reference. This requires setup on the account so talk to your AM to enable
+            this feature.
+        from:
+          type: string
+          description: "The phone number that sent the message. [More info](https://community.sinch.com/t5/Glossary/MSISDN/ta-p/7628)"
+          example: "15551231234"
+        id:
+          type: string
+          description: The ID of this inbound message.
+          example: 01GC66621VHDBN119Z8PMV1AAY
+        operator_id:
+          type: string
+          description: The MCCMNC of the sender's operator if known.
+          example: "35000"
+        received_at:
+          type: string
+          format: date-time
+          description: "When the system received the message. \n \n YYYY-MM-DDThh:mm:ss.SSSZ\
+            \ format"
+        sent_at:
+          type: string
+          format: date-time
+          description: "When the message left the originating device. Only available\
+            \ if provided by operator. \n \n YYYY-MM-DDThh:mm:ss.SSSZ format"
+        to:
+          type: string
+          description: The Sinch phone number or short code to which the message was
+            sent.
+          example: "11203453453"
+        type:
+          type: string
+          readOnly: true
+      required:
+      - from
+      - id
+      - received_at
+      - to
+      - type
+    MmsMedia:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: "The result code. Possible values: 0 (success), 1 (content\
+            \ upload error), 2 (cloud bucket error), 3 (bucket key error)."
+        content_type:
+          type: string
+          description: "Content type of binary. [More info](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types)"
+          example: image/jpeg
+        status:
+          type: string
+          description: Status of the uploaded media.
+          enum:
+          - Uploaded
+          - Failed
+          examples:
+          - Uploaded
+          - Failed
+          x-enumDescriptions:
+            Uploaded: Successfully uploaded
+            Failed: Failed to upload media to S3
+        url:
+          type: string
+          description: URL to be used to download attachment.
+      required:
+      - code
+      - content_type
+      - status
+    MmsMoBody:
+      type: object
+      properties:
+        media:
+          type: array
+          description: Collection of attachments in incoming message.
+          items:
+            $ref: "#/components/schemas/MmsMedia"
+        message:
+          type: string
+          description: Text content of message.
+          example: fixture instructions
+        subject:
+          type: string
+          description: Optional subject of message.
+          example: Repair details
+    binary_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiMoMessage"
+      - type: object
+        properties:
+          body:
+            type: string
+            description: "The message content Base64 encoded. \n \n Max 140 bytes\
+              \ together with udh."
+          type:
+            type: string
+            description: SMS in binary format
+            enum:
+            - mo_binary
+            x-enumDescriptions:
+              mo_binary: SMS in binary format
+          udh:
+            type: string
+            description: The UDH header of a binary message HEX encoded. Max 140 bytes
+              together with body.
+      required:
+      - body
+      - from
+      - id
+      - received_at
+      - to
+      - udh
+      title: Binary message
+    media_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiMoMessage"
+      - type: object
+        properties:
+          body:
+            $ref: "#/components/schemas/MmsMoBody"
+            description: "Body containing subject, message and received attachments."
+          type:
+            type: string
+            description: Regular MMS
+            enum:
+            - mo_media
+            x-enumDescriptions:
+              mo_media: Regular MMS
+      required:
+      - body
+      - from
+      - id
+      - received_at
+      - to
+      title: Media message
+    text_message:
+      allOf:
+      - $ref: "#/components/schemas/ApiMoMessage"
+      - type: object
+        properties:
+          body:
+            type: string
+            maxLength: 2000
+            minLength: 0
+          type:
+            type: string
+            description: Regular SMS
+            enum:
+            - mo_text
+            x-enumDescriptions:
+              mo_text: Regular SMS
+      required:
+      - body
+      - from
+      - id
+      - received_at
+      - to
+      title: Text message
+    ApiGroupList:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: The total number of entries matching the given filters.
+          example: 2
+        page:
+          type: integer
+          format: int32
+          description: The requested page.
+          example: 0
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiGroup"
+        page_size:
+          type: integer
+          format: int32
+          description: The number of entries returned in this request.
+          example: 2
+    ApiDeliveryReportList:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: The total number of entries matching the given filters.
+          example: 2
+        page:
+          type: integer
+          format: int32
+          description: The requested page.
+          example: 0
+        page_size:
+          type: integer
+          format: int32
+          description: The number of entries returned in this request.
+          example: 2
+        delivery_reports:
+          type: array
+          description: The page of delivery reports matching the given filters.
+          items:
+            $ref: "#/components/schemas/ApiRecipientDeliveryReport"
+    ApiRecipientDeliveryReport:
+      type: object
+      properties:
+        applied_originator:
+          type: string
+          description: "The default originator used for the recipient this delivery\
+            \ report belongs to, if default originator pool configured and no originator\
+            \ set when submitting batch."
+        at:
+          type: string
+          format: date-time
+          description: "A timestamp of when the Delivery Report was created in the\
+            \ Sinch service. Formatted as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601):\
+            \ `YYYY-MM-DDThh:mm:ss.SSSZ`."
+        batch_id:
+          type: string
+          description: The ID of the batch this delivery report belongs to
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        client_reference:
+          type: string
+          description: "The client identifier of the batch this delivery report belongs\
+            \ to, if set when submitting batch."
+        code:
+          type: integer
+          format: int32
+          description: "The detailed [status code](https://developers.sinch.com/docs/sms/api-reference/sms/tag/Delivery-reports/#tag/Delivery-reports/section/Delivery-report-error-codes)."
+        encoding:
+          type: string
+          description: Applied encoding for message. Present only if smart encoding
+            is enabled.
+          enum:
+          - GSM
+          - UNICODE
+          example: GSM
+          x-enumDescriptions:
+            GSM: GSM encoding
+            UNICODE: Unicode encoding
+        number_of_message_parts:
+          type: integer
+          format: int32
+          description: The number of parts the message was split into. Present only
+            if _max_number_of_message_parts_ parameter was set.
+          example: 1
+        operator:
+          type: string
+          description: "The operator that was used for delivering the message to this\
+            \ recipient, if enabled on the account by Sinch."
+          example: "35000"
+        operator_status_at:
+          type: string
+          format: date-time
+          description: "A timestamp extracted from the Delivery Receipt from the originating\
+            \ SMSC. Formatted as [ISO-8601](https://en.wikipedia.org/wiki/ISO_8601):\
+            \ `YYYY-MM-DDThh:mm:ss.SSSZ`."
+        recipient:
+          type: string
+          description: Phone number that was queried for.
+          example: "15551231234"
+        status:
+          type: string
+          $ref: "#/components/schemas/DeliveryStatus"
+        type:
+          type: string
+          description: The recipient delivery report type.
+          enum:
+          - recipient_delivery_report_sms
+          - recipient_delivery_report_mms
+          x-enumDescriptions:
+            recipient_delivery_report_sms: An SMS recipient delivery report.
+            recipient_delivery_report_mms: An MMS recipient delivery report.
+      required:
+      - at
+      - batch_id
+      - code
+      - recipient
+      - status
+      - type
+    ApiBatchList:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int64
+          description: The total number of entries matching the given filters.
+          example: 2
+        page:
+          type: integer
+          format: int32
+          description: The requested page.
+          example: 0
+        batches:
+          type: array
+          description: The page of batches matching the given filters.
+          items:
+            oneOf:
+            - $ref: "#/components/schemas/Binary"
+            - $ref: "#/components/schemas/Media"
+            - $ref: "#/components/schemas/Text"
+        page_size:
+          type: integer
+          format: int32
+          description: The number of entries returned in this request.
+          example: 2
+    ApiDeliveryReport:
+      type: object
+      properties:
+        batch_id:
+          type: string
+          description: The ID of the batch this delivery report belongs to.
+          example: 01FC66621VHDBN119Z8PMV1QPQ
+          readOnly: true
+        client_reference:
+          type: string
+          description: "The client provided identifier of the batch this delivery\
+            \ report belongs to, if set when submitting batch."
+        statuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageDeliveryStatus"
+        total_message_count:
+          type: integer
+          format: int32
+          description: The total number of messages in the batch.
+          example: 2
+          minimum: 0
+        type:
+          type: string
+          description: The delivery report type.
+          enum:
+          - delivery_report_sms
+          - delivery_report_mms
+          x-enumDescriptions:
+            delivery_report_sms: An SMS delivery report.
+            delivery_report_mms: An MMS delivery report.
+      required:
+      - batch_id
+      - statuses
+      - total_message_count
+      - type
+    MessageDeliveryStatus:
+      type: object
+      description: Array with status objects. Only status codes with at least one
+        recipient will be listed.
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: "The detailed [status code](/docs/sms/api-reference/sms/tag/Delivery-reports/#tag/Delivery-reports/section/Delivery-report-error-codes)."
+        count:
+          type: integer
+          format: int32
+          description: The number of messages that currently has this code.
+          example: 2
+          minimum: 1
+        recipients:
+          type: array
+          description: Only for `full` report. A list of the phone number recipients
+            which messages has this status code.
+          example:
+          - "15551231234"
+          - "15551256344"
+          items:
+            type: string
+          uniqueItems: true
+        status:
+          type: string
+          $ref: "#/components/schemas/DeliveryStatus"
+      required:
+      - code
+      - count
+      - status
+  parameters:
+    batchId:
+      name: batch_id
+      in: path
+      description: The batch ID you received from sending a message.
+      required: true
+      schema:
+        type: string
+      example: 01FC66621VHDBN119Z8PMV1QPQ
+    inboundId:
+      name: inbound_id
+      in: path
+      description: The inbound ID found when listing inbound messages.
+      required: true
+      schema:
+        type: string
+      example: 01FC66621VHDBN119Z8PMV1QPQ
+    servicePlanId:
+      name: service_plan_id
+      in: path
+      description: "Your service plan ID. You can find this on your [Dashboard](https://dashboard.sinch.com/sms/api/rest)."
+      required: true
+      schema:
+        type: string
+      example: jd63jf88477ll123ab4567cd89012ef3
+    groupId:
+      name: group_id
+      in: path
+      description: ID of a group that you are interested in
+      required: true
+      schema:
+        type: string
+      example: 01FC66721VHDBN119Z8PMVABFE
+    page:
+      name: page
+      in: query
+      description: The page number starting from 0.
+      required: false
+      schema:
+        type: number
+        default: 0
+      example: 4
+    pageSize:
+      name: page_size
+      in: query
+      description: Determines the size of a page.
+      required: false
+      schema:
+        type: number
+        default: 30
+        maximum: 100
+        minimum: 1
+      example: 50
+  securitySchemes:
+    BearerAuth:
+      type: http
+      description: "The token is sent in the Authorization header preceded by Bearer.\
+        \ It's required for all requests made to the REST API. You can find your serviceplan_id\
+        \ and token in the [Dashboard](https://dashboard.sinch.com/sms/api/rest)"
+      scheme: bearer

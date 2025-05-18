@@ -1,0 +1,46 @@
+openapi:
+  ably:
+    file_location: "specs/ably.yaml" # file_location can be a local file or a URL
+    base_url: "https://rest.ably.io" # base_url is main host for the API. Rewrites 'server' in the OpenAPI spec
+    
+    filter:
+      include_tags: # list of tags to include. Supports patterns
+        - "Status"
+        - "History"
+      exlude_tags: # list of tags to exclude. Supports patterns
+        - "Publishing"
+        - "Authentication"
+      include_paths: # this is a list of paths to include
+        - "/push/**"
+      exclude_paths: # this is a list of paths to exclude
+        - "/push/deviceRegistrations"
+    authentication:
+      # supported types are: Basic, Bearer
+      auth_type: "Basic" # auth_type is the type of authentication used by the API
+      api_token: "dummy_token"
+
+  sms:
+    file_location: "specs/sms.yaml"
+    base_url: "https://sms.api.sinch.com"
+    auth_type: "Bearer"
+
+  mailgun:
+    file_location: "specs/mailgun.yaml"
+    base_url: "https://api.mailgun.net"
+    auth_type: "Basic"
+  
+  message_media:
+    file_location: "specs/message_media.json"
+    base_url: "https://api.messagemedia.com"
+    auth_type: "Basic"
+    
+  slack:
+    file_location: "specs/slack.json"
+    base_url: "https://slack.com/api"
+    authentication:
+      # supported types are: Basic, Bearer
+      auth_type: "Bearer"
+      api_token: "dummy_key"
+
+debug: false
+log_file: "openapi_mcp.log"
